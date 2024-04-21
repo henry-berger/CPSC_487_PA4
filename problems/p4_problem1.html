@@ -105,22 +105,37 @@
 
     // if you want to use the XArm7 robot:
     let robot = new XArm7Robot();
+    // or, if you want to use the B1Z1 robot, comment the previous robot and uncomment this line:
+    // let robot = new B1Z1Robot();
 
     let gui = get_default_lil_gui();
     let folder1 = gui.addFolder('Controls');
+    let state = {};
     // folder1.add(settings, 'theta', -2*Math.PI, 2*Math.PI);
 
-    // or, if you want to use the B1Z1 robot, comment the previous robot and uncomment this line:
-    // let robot = new B1Z1Robot();
 
     // this will spawn all of the robot's links at the origin
     robot.spawn_robot(engine);
     let links = robot.links;
     let link_transforms = {};
-    let state = links.map(link => 0);
+    // let state = links.map(link => 0);
     // let links = robot.links;
     let joints = robot.joints;
     let kinematic_hierarchy = robot.kinematic_hierarchy;
+
+    for (let i=0; i < joints.length; i += 1) {
+        switch (joints[i].joint_type_string) {
+            case "revolute":
+            case "prismatic":
+            state[joints[i].dof_idx] = 0;
+                folder1.add(state, joints[i].dof_idx, joints[i].lower_bound, joints[i].upper_bound).name(joints[i].joint_name);
+                break;
+            case "fixed":
+                break;
+            case "floating":
+                break;
+        }
+    }
 
     engine.animation_loop( ()  => {
         kinematic_hierarchy.forEach(level => {
