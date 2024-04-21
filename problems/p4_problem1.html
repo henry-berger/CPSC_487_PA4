@@ -98,15 +98,24 @@
                 let full_pos = [0,1,2].map(i=>fixed_pos[i]+trans_axis[i]*dof);
                 return [fixed_quat, full_pos];
             }
+            case "floating":
+                console.log("Uh oh");
+                let qz = [Math.cos(state[joint.rotation_dof_idxs[0]]/2), 0, 0, Math.sin(state[joint.rotation_dof_idxs[0]]/2)];
+                let qy = [Math.cos(state[joint.rotation_dof_idxs[1]]/2), 0, Math.sin(state[joint.rotation_dof_idxs[1]]/2), 0];
+                let qx = [Math.cos(state[joint.rotation_dof_idxs[2]]/2), Math.sin(state[joint.rotation_dof_idxs[2]]/2), 0, 0];
+                let q = q_multiply(q_multiply(q_multiply(joint.rpy_wxyz_quaternion, qz), qy), qx);
+                let t = [state[joint.translation_dof_idxs[0]], state[joint.translation_dof_idxs[1]], state[joint.translation_dof_idxs[2]]];
+                return [q, t];
+                // return [[1,0,0,0],[0,0,0]];
         }
     }
 
     let engine = ThreeEngine.new_default_3d();
 
     // if you want to use the XArm7 robot:
-    let robot = new XArm7Robot();
+    // let robot = new XArm7Robot();
     // or, if you want to use the B1Z1 robot, comment the previous robot and uncomment this line:
-    // let robot = new B1Z1Robot();
+    let robot = new B1Z1Robot();
 
     let gui = get_default_lil_gui();
     let folder1 = gui.addFolder('Controls');
@@ -127,12 +136,20 @@
         switch (joints[i].joint_type_string) {
             case "revolute":
             case "prismatic":
-            state[joints[i].dof_idx] = 0;
+                state[joints[i].dof_idx] = 0;
                 folder1.add(state, joints[i].dof_idx, joints[i].lower_bound, joints[i].upper_bound).name(joints[i].joint_name);
                 break;
             case "fixed":
                 break;
             case "floating":
+                joints[i].rotation_dof_idxs.forEach(idx=>state[idx]=0);
+                joints[i].translation_dof_idxs.forEach(idx=>state[idx]=0);
+                folder1.add(state, joints[i].rotation_dof_idxs[0], -2*Math.PI, 2*Math.PI).name(joints[i].joint_name + "_yaw");
+                folder1.add(state, joints[i].rotation_dof_idxs[1], -Math.PI, Math.PI).name(joints[i].joint_name + "_pitch");
+                folder1.add(state, joints[i].rotation_dof_idxs[2], -Math.PI, Math.PI).name(joints[i].joint_name + "_roll");
+                folder1.add(state, joints[i].translation_dof_idxs[0], -2, 2).name(joints[i].joint_name + "_x");
+                folder1.add(state, joints[i].translation_dof_idxs[1], -2, 2).name(joints[i].joint_name + "_y");
+                folder1.add(state, joints[i].translation_dof_idxs[2], -2, 2).name(joints[i].joint_name + "_z");
                 break;
         }
     }
