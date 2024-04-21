@@ -20,9 +20,8 @@
 </head>
 <body>
 <script type="module">
-    import {get_default_lil_gui, ThreeEngine} from "../js/utils/utils_three.js";
+    import {get_default_lil_gui, refresh_displays, ThreeEngine} from "../js/utils/utils_three.js";
     import {B1Z1Robot, XArm7Robot} from "../js/utils/utils_robot.js";
-    // import {mul_matrix_matrix} from "../js/utils/utils_math";
 
     // todo: create a visualization that demonstrates your knowledge of forward kinematics on a robot model.
     // todo: The "default" assignment is to recreate this visualization:
@@ -120,7 +119,16 @@
     let gui = get_default_lil_gui();
     let folder1 = gui.addFolder('Controls');
     let state = {};
-    // folder1.add(settings, 'theta', -2*Math.PI, 2*Math.PI);
+    let actions = {
+        reset: function() {
+            // I got the for loop syntax from https://stackoverflow.com/questions/34913675/how-to-iterate-keys-values-in-javascript
+            for (const [dof, val] of Object.entries(state)) {
+                state[dof] = 0;
+            }
+            refresh_displays(gui);
+        }
+    }
+    folder1.add(actions, 'reset').name('Reset');
 
 
     // this will spawn all of the robot's links at the origin
@@ -157,8 +165,6 @@
     engine.animation_loop( ()  => {
         kinematic_hierarchy.forEach(level => {
             level.forEach(link_idx => {
-                console.log("Link number");
-                console.log(link_idx);
                 if (link_idx == 0) {
                     let tf = [[1,0,0,0],[0,0,0]];
                     robot.set_link_mesh_pose_from_wxyz_quaternion_and_position(engine, link_idx, [1,0,0,0],[[0],[0],[link_idx]]);
