@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>CPSC 487/587</title>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lil-gui@0.19.1/dist/lil-gui.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/10.3.0/math.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/quaternion@1.5.1/quaternion.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/numeric@1.2.6/numeric-1.2.6.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stats.js@0.17.0/build/stats.min.js"></script>
+    <script type="importmap">
+        {
+            "imports": {
+              "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+              "three/": "https://unpkg.com/three@0.160.0/"
+            }
+        }
+    </script>
+</head>
+<body>
+<script type="module">
+    import {get_default_lil_gui, ThreeEngine} from "../js/utils/utils_three.js";
+    import {B1Z1Robot, XArm7Robot} from "../js/utils/utils_robot.js";
+    // import {mul_matrix_matrix} from "../js/utils/utils_math";
+
+    // todo: create a visualization that demonstrates your knowledge of forward kinematics on a robot model.
+    // todo: The "default" assignment is to recreate this visualization:
+    // todo: https://yale-cpsc-487-587-internal-djrakita-c95fa6c3239a481a48d29a6b0fd.gitlab.io/html/unit4_visualizations/fk.html
+    // todo: or this visualization:
+    // todo: https://yale-cpsc-487-587-internal-djrakita-c95fa6c3239a481a48d29a6b0fd.gitlab.io/html/unit4_visualizations/fk2.html
+    // todo: however, feel free to deviate from this if you want to.
+    // todo: I will be adding information to the class wiki on important properties and subroutines regarding the robot
+    // todo: object created for this class.  If you have questions, refer to that wiki or ask me over slack.
+
+    function dot_3(v1, v2) {
+        let result = 0;
+        for (let i = 0; i < 3; i++) {
+            result += v1[i]*v2[i];
+        }
+        return result;
+    }
+
+    function multiply_3x3_matrix_and_3x1_vector(matrix, vector) {
+        return matrix.map(row => dot_3(row, vector));
+    }
+
+    let W=0;
+    let X=1;
+    let Y=2;
+    let Z=3;
+    let I=1;
+    let J=2;
+    let K=3;
+
+    function q_multiply(qa, qb) {
+        let w = qa[W]*qb[W]-qa[I]*qb[I]-qa[J]*qb[J]-qa[K]*qb[K];
+        let x = qa[W]*qb[I]+qa[I]*qb[W]+qa[J]*qb[K]-qa[K]*qb[J];
+        let y = qa[W]*qb[J]-qa[I]*qb[K]+qa[J]*qb[W]+qa[K]*qb[I];
+        let z = qa[W]*qb[Z]+qa[I]*qb[J]-qa[J]*qb[I]+qa[K]*qb[W];
+        return [w, x, y, z];
+    }
+
+    function q_inv(q) {
+        return [q[0], -q[1], -q[2], -q[3]];
+    }
+
+    function compose(tf_g, tf_l) {
+        let qg = tf_g[0];
+        let tg = tf_g[1];
+        let ql = tf_l[0];
+        let tl = tf_l[1];
+        let q = q_multiply(qg, ql)
+        let tl_tf = q_multiply(q_multiply(qg, [0, tl[0], tl[1], tl[2]]), q_inv(qg));
+        let t = [tg[0]+tl_tf[1], tg[1]+tl_tf[2], tg[2]+tl_tf[3]];
+        return [q, t];
+    }
+
+    function get_joint_tf(joint, state) {
+        switch (joint.joint_type_string) {
+            case "fixed":
+                return [joint.rpy_wxyz_quaternion, joint.xyz];
+            case "revolute": {
+                let fixed_quat = joint.rpy_wxyz_quaternion;
+                let fixed_pos = joint.xyz;
+                let dof = state[joint.dof_idx];
+                let rot_axis = joint.axis;
+                let rot_quat = [Math.cos(dof/2), Math.sin(dof/2)*rot_axis[0], Math.sin(dof/2)*rot_axis[1], Math.sin(dof/2)*rot_axis[2]];
+                let full_quat = q_multiply(fixed_quat, rot_quat);
+                return [full_quat, fixed_pos];
+            }
+            case "prismatic": {
+                let fixed_quat = joint.rpy_wxyz_quaternion;
+                let fixed_pos = joint.xyz;
+                let dof = state[joint.dof_idx];
+                let trans_axis = joint.axis;
+                trans_axis = multiply_3x3_matrix_and_3x1_vector(joint.rpy_SO3_matrix, trans_axis);
+                let full_pos = [0,1,2].map(i=>fixed_pos[i]+trans_axis[i]*dof);
+                return [fixed_quat, full_pos];
+            }
+        }
+    }
+
+    let engine = ThreeEngine.new_default_3d();
+
+    // if you want to use the XArm7 robot:
+    let robot = new XArm7Robot();
+
+    let gui = get_default_lil_gui();
+    let folder1 = gui.addFolder('Controls');
+    // folder1.add(settings, 'theta', -2*Math.PI, 2*Math.PI);
+
+    // or, if you want to use the B1Z1 robot, comment the previous robot and uncomment this line:
+    // let robot = new B1Z1Robot();
+
+    // this will spawn all of the robot's links at the origin
+    robot.spawn_robot(engine);
+    let links = robot.links;
+    let link_transforms = {};
+    let state = links.map(link => 0);
+    // let links = robot.links;
+    let joints = robot.joints;
+    let kinematic_hierarchy = robot.kinematic_hierarchy;
+
+    engine.animation_loop( ()  => {
+        kinematic_hierarchy.forEach(level => {
+            level.forEach(link_idx => {
+                console.log("Link number");
+                console.log(link_idx);
+                if (link_idx == 0) {
+                    let tf = [[1,0,0,0],[0,0,0]];
+                    robot.set_link_mesh_pose_from_wxyz_quaternion_and_position(engine, link_idx, [1,0,0,0],[[0],[0],[link_idx]]);
+                    link_transforms[link_idx] = tf;
+                } else {
+                    let joint = joints[links[link_idx].parent_joint_idx];
+                    let parent_link = links[link_idx].parent_link_idx;
+                    let parent_tf = link_transforms[parent_link];
+                    let joint_tf = get_joint_tf(joint, state);
+                    let tf = compose(parent_tf, joint_tf);
+                    robot.set_link_mesh_pose_from_wxyz_quaternion_and_position(engine, link_idx, tf[0], tf[1]);
+                    link_transforms[link_idx] = tf;
+                }
+            })
+        });
+
+    });
+
+</script>
+</body>
+</html>
