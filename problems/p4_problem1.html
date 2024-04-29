@@ -116,19 +116,61 @@
     // or, if you want to use the B1Z1 robot, comment the previous robot and uncomment this line:
     let robot = new B1Z1Robot();
 
+    function plot_axes(engine, q, t) {
+        let scale = 0.05
+        let xh = [0, scale, 0, 0];
+        let yh = [0, 0, scale, 0];
+        let zh = [0, 0, 0, scale];
+        xh = q_multiply(q_multiply(q, xh), q_inv(q));
+        yh = q_multiply(q_multiply(q, yh), q_inv(q));
+        zh = q_multiply(q_multiply(q, zh), q_inv(q));
+        let origin = t;
+        let xp = [t[0]+xh[1], t[1]+xh[2], t[2]+xh[3]];
+        let yp = [t[0]+yh[1], t[1]+yh[2], t[2]+yh[3]];
+        let zp = [t[0]+zh[1], t[1]+zh[2], t[2]+zh[3]];
+        engine.draw_debug_line(origin, xp, true, 0.001, 0xFF0000, 1);
+        engine.draw_debug_line(origin, yp, true, 0.001, 0x00FF00, 1);
+        engine.draw_debug_line(origin, zp, true, 0.001, 0x0000FF, 1);
+    }
+
     let gui = get_default_lil_gui();
-    let folder1 = gui.addFolder('Controls');
     let state = {};
+    let display_state = {
+        "Display Mesh": true,
+        "Display Wireframe": false,
+        "Display Mesh only with Frame": false
+    };
+    gui.add(display_state, "Display Mesh");
+    gui.add(display_state, "Display Wireframe");
+    gui.add(display_state, "Display Mesh only with Frame");
+    let folder1 = gui.addFolder('Controls');
+    let folder2 = gui.addFolder('Actions');
+    let folder3 = gui.addFolder('Links');
     let actions = {
-        reset: function() {
+        "Reset": function() {
             // I got the for loop syntax from https://stackoverflow.com/questions/34913675/how-to-iterate-keys-values-in-javascript
             for (const [dof, val] of Object.entries(state)) {
                 state[dof] = 0;
             }
             refresh_displays(gui);
-        }
+        },
+        "Select all frames": function() {
+            for (let i=0; i < links.length; i+=1) {
+                display_state[i]=true;
+            }
+            refresh_displays(gui);
+        },
+
+        "Deselect all frames": function() {
+            for (let i=0; i < links.length; i+=1) {
+                display_state[i]=false;
+            }
+            refresh_displays(gui);
+        },
     }
-    folder1.add(actions, 'reset').name('Reset');
+    folder2.add(actions, 'Reset');
+    folder2.add(actions, 'Select all frames');
+    folder2.add(actions, 'Deselect all frames');
 
 
     // this will spawn all of the robot's links at the origin
@@ -140,12 +182,16 @@
     let joints = robot.joints;
     let kinematic_hierarchy = robot.kinematic_hierarchy;
 
+    for (let i=0; i < links.length; i += 1) {
+        display_state[i] = false;
+        folder3.add(display_state, i).name("Link "+i+": "+links[i].link_name);
+    }
     for (let i=0; i < joints.length; i += 1) {
         switch (joints[i].joint_type_string) {
             case "revolute":
             case "prismatic":
                 state[joints[i].dof_idx] = 0;
-                folder1.add(state, joints[i].dof_idx, joints[i].lower_bound, joints[i].upper_bound).name(joints[i].joint_name);
+                folder1.add(state, joints[i].dof_idx, joints[i].lower_bound, joints[i].upper_bound).name("Dof "+joints[i].dof_idx+": "+joints[i].joint_name);
                 break;
             case "fixed":
                 break;
@@ -167,7 +213,10 @@
             level.forEach(link_idx => {
                 if (link_idx == 0) {
                     let tf = [[1,0,0,0],[0,0,0]];
-                    robot.set_link_mesh_pose_from_wxyz_quaternion_and_position(engine, link_idx, [1,0,0,0],[[0],[0],[link_idx]]);
+                    robot.set_link_mesh_pose_from_wxyz_quaternion_and_position(engine, link_idx, tf[0], tf[1]);
+                    if (display_state[link_idx]) {
+                        plot_axes(engine, tf[0], tf[1]);
+                    }
                     link_transforms[link_idx] = tf;
                 } else {
                     let joint = joints[links[link_idx].parent_joint_idx];
@@ -175,8 +224,17 @@
                     let parent_tf = link_transforms[parent_link];
                     let joint_tf = get_joint_tf(joint, state);
                     let tf = compose(parent_tf, joint_tf);
+                    // if (display_state["Display Mesh"] && (!display_state["Display Mesh only with Frame"] || display_state[link_idx])) {
                     robot.set_link_mesh_pose_from_wxyz_quaternion_and_position(engine, link_idx, tf[0], tf[1]);
+                    if (display_state[link_idx]) {
+                        plot_axes(engine, tf[0], tf[1]);
+                    }
                     link_transforms[link_idx] = tf;
+
+                    let mesh_vis = !(!display_state["Display Mesh"] || (display_state["Display Mesh only with Frame"] && !display_state[link_idx]));
+                    let wireframe_vis = !(!display_state["Display Wireframe"] || (display_state["Display Mesh only with Frame"] && !display_state[link_idx]));
+                    robot.set_link_mesh_visibility(engine, link_idx, mesh_vis);
+                    robot.set_link_wireframe_visibility(engine, link_idx, wireframe_vis);
                 }
             })
         });
